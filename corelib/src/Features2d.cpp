@@ -858,27 +858,35 @@ std::vector<cv::KeyPoint> Feature2D::generateKeypoints(const cv::Mat & image, co
 		if(maskIn.type()==CV_16UC1 || maskIn.type() == CV_32FC1)
 		{
 			mask = cv::Mat::zeros(maskIn.rows, maskIn.cols, CV_8UC1);
-			for(int i=0; i<(int)mask.total(); ++i)
+			// Locals, as the unsigned char mask writes may alias them (reloaded per pixel otherwise)
+			const bool depthInMM = maskIn.type()==CV_16UC1;
+			const unsigned short * depthMM = (const unsigned short *)maskIn.data;
+			const float * depthM = (const float *)maskIn.data;
+			const float minDepth = _minDepth;
+			const float maxDepth = _maxDepth;
+			unsigned char * maskData = mask.data;
+			const int total = (int)mask.total();
+			for(int i=0; i<total; ++i)
 			{
 				float value = 0.0f;
-				if(maskIn.type()==CV_16UC1)
+				if(depthInMM)
 				{
-					if(((unsigned short*)maskIn.data)[i] > 0 &&
-					   ((unsigned short*)maskIn.data)[i] < std::numeric_limits<unsigned short>::max())
+					if(depthMM[i] > 0 &&
+					   depthMM[i] < std::numeric_limits<unsigned short>::max())
 					{
-						value = float(((unsigned short*)maskIn.data)[i])*0.001f;
+						value = float(depthMM[i])*0.001f;
 					}
 				}
 				else
 				{
-					value = ((float*)maskIn.data)[i];
+					value = depthM[i];
 				}
 
-				if(value>_minDepth &&
-				   (_maxDepth == 0.0f || value <= _maxDepth) &&
+				if(value>minDepth &&
+				   (maxDepth == 0.0f || value <= maxDepth) &&
 				   uIsFinite(value))
 				{
-					((unsigned char*)mask.data)[i] = 255; // ORB uses 255 to handle pyramids
+					maskData[i] = 255; // ORB uses 255 to handle pyramids
 				}
 			}
 		}
