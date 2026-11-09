@@ -311,6 +311,14 @@ void ULogger::write(ULogger::Level level,
 		const char* msg,
 		...)
 {
+	// Fast path: return without locking the mutex if the message would be
+	// neither printed nor sent as event (e.g., UDEBUG at the default kInfo level),
+	// to avoid contention between threads logging filtered messages in loops.
+	if(level < kFatal && level < eventLevel_ && (type_ == kTypeNoLog || level < level_))
+	{
+		return;
+	}
+
 	loggerMutex_.lock();
 	if(type_ == kTypeNoLog && level < kFatal && level < eventLevel_)
 	{
