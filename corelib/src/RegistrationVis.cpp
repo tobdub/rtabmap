@@ -2127,6 +2127,10 @@ Transform RegistrationVis::computeTransformationImpl(
 			models.insert(std::make_pair(1, cameraModelsFrom));
 			models.insert(std::make_pair(2, cameraModelsTo));
 
+			// Inverse of the local transform of each camera, computed when first used
+			std::vector<Transform> localTransformsInvFrom(cameraModelsFrom.size());
+			std::vector<Transform> localTransformsInvTo(cameraModelsTo.size());
+
 			std::map<int, std::map<int, FeatureBA> > wordReferences;
 			BAOutliers sbaOutliers;
 			UDEBUG("");
@@ -2156,7 +2160,12 @@ Transform RegistrationVis::computeTransformationImpl(
 
 					UASSERT(cam[cameraIndex].isValidForProjection());
 
-					float depthFrom = util3d::transformPoint(pt3D, cam[cameraIndex].localTransform().inverse()).z;
+					Transform & localTransformInv = localTransformsInvFrom[cameraIndex];
+					if(localTransformInv.isNull())
+					{
+						localTransformInv = cam[cameraIndex].localTransform().inverse();
+					}
+					float depthFrom = util3d::transformPoint(pt3D, localTransformInv).z;
 					ptMap.insert(std::make_pair(1,FeatureBA(kpt, depthFrom, cv::Mat(), cameraIndex)));
 				}
 
@@ -2180,7 +2189,12 @@ Transform RegistrationVis::computeTransformationImpl(
 					float depthTo = 0.0f;
 					if(!toSignature.getWords3().empty())
 					{
-						depthTo = util3d::transformPoint(toSignature.getWords3()[indexTo], cam[cameraIndex].localTransform().inverse()).z;
+						Transform & localTransformInv = localTransformsInvTo[cameraIndex];
+						if(localTransformInv.isNull())
+						{
+							localTransformInv = cam[cameraIndex].localTransform().inverse();
+						}
+						depthTo = util3d::transformPoint(toSignature.getWords3()[indexTo], localTransformInv).z;
 					}
 
 					ptMap.insert(std::make_pair(2,FeatureBA(kpt, depthTo, cv::Mat(), cameraIndex)));
