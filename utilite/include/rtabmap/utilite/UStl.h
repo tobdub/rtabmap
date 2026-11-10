@@ -716,67 +716,76 @@ inline std::list<std::string> uSplitNumChar(const std::string & str)
  */
 inline int uStrNumCmp(const std::string & a, const std::string & b)
 {
-	std::vector<std::string> listA;
-	std::vector<std::string> listB;
-
-	listA = uListToVector(uSplitNumChar(a));
-	listB = uListToVector(uSplitNumChar(b));
-
-	unsigned int i;
-	int result = 0;
-	for(i=0; i<listA.size() && i<listB.size(); ++i)
+	// The strings are compared token by token, a token being a sequence of
+	// digits (a number) or a sequence of other characters.
+	size_t beginA = 0;
+	size_t beginB = 0;
+	while(beginA < a.size() && beginB < b.size())
 	{
-		if(uIsDigit(listA[i].at(0)) && uIsDigit(listB[i].at(0)))
+		// Find the end of the current token of each string
+		const bool isNumberA = uIsDigit(a[beginA]);
+		const bool isNumberB = uIsDigit(b[beginB]);
+		size_t endA = beginA + 1;
+		while(endA < a.size() && uIsDigit(a[endA]) == isNumberA)
 		{
-			//padding if zeros at the beginning
-			if(listA[i].at(0) == '0' && listB[i].size() < listA[i].size())
-			{
-				while(listB[i].size() < listA[i].size())
-				{
-					listB[i] += '0';
-				}
-			}
-			else if(listB[i].at(0) == '0' && listA[i].size() < listB[i].size())
-			{
-				while(listA[i].size() < listB[i].size())
-				{
-					listA[i] += '0';
-				}
-			}
+			++endA;
+		}
+		size_t endB = beginB + 1;
+		while(endB < b.size() && uIsDigit(b[endB]) == isNumberB)
+		{
+			++endB;
+		}
+		const size_t sizeA = endA - beginA;
+		const size_t sizeB = endB - beginB;
 
-			if(listB[i].size() < listA[i].size())
+		int result;
+		if(isNumberA && isNumberB)
+		{
+			const bool leadingZero =
+					(a[beginA] == '0' && sizeB < sizeA) ||
+					(b[beginB] == '0' && sizeA < sizeB);
+			if(sizeA != sizeB && !leadingZero)
 			{
-				result = 1;
-			}
-			else if(listB[i].size() > listA[i].size())
-			{
-				result = -1;
+				// The longest number is the greatest
+				result = sizeA > sizeB ? 1 : -1;
 			}
 			else
 			{
-				result = listA[i].compare(listB[i]);
+				// Same size, or the longest number starts with 0: compared
+				// digit by digit, like decimals (05 < 5)
+				const size_t minSize = std::min(sizeA, sizeB);
+				result = a.compare(beginA, minSize, b, beginB, minSize);
+				// Same first digits: the longest number is the greatest,
+				// unless its other digits are zeros
+				if(result == 0 && a.find_first_not_of('0', beginA + minSize) < endA)
+				{
+					result = 1;
+				}
+				if(result == 0 && b.find_first_not_of('0', beginB + minSize) < endB)
+				{
+					result = -1;
+				}
 			}
 		}
-		else if(uIsDigit(listA[i].at(0)))
+		else if(isNumberA != isNumberB)
 		{
-			result = -1;
-		}
-		else if(uIsDigit(listB[i].at(0)))
-		{
-			result = 1;
+			// A number is smaller than other characters
+			result = isNumberA ? -1 : 1;
 		}
 		else
 		{
-			result = listA[i].compare(listB[i]);
+			result = a.compare(beginA, sizeA, b, beginB, sizeB);
 		}
 
 		if(result != 0)
 		{
-			break;
+			return result < 0 ? -1 : 1;
 		}
+		beginA = endA;
+		beginB = endB;
 	}
-
-	return result;
+	// The tokens that both strings have are the same
+	return 0;
 }
 
 /**

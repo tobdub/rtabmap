@@ -321,6 +321,74 @@ TEST(UStlTest, UStrNumCmp)
     EXPECT_EQ(uStrNumCmp("Image10.jpg", "Image10.jpg"), 0);
 }
 
+TEST(UStlTest, UStrNumCmpNumbers)
+{
+    // Numbers are compared by value, not character by character
+    EXPECT_LT(uStrNumCmp("9", "10"), 0);
+    EXPECT_GT(uStrNumCmp("10", "9"), 0);
+    EXPECT_LT(uStrNumCmp("12", "13"), 0);
+    EXPECT_GT(uStrNumCmp("13", "12"), 0);
+    EXPECT_EQ(uStrNumCmp("12", "12"), 0);
+    EXPECT_LT(uStrNumCmp("0", "12"), 0);
+    EXPECT_GT(uStrNumCmp("12", "0"), 0);
+
+    // Versions
+    EXPECT_GT(uStrNumCmp("0.23.7", "0.12.0"), 0);
+    EXPECT_LT(uStrNumCmp("0.12.0", "0.23.7"), 0);
+    EXPECT_LT(uStrNumCmp("0.9.0", "0.10.0"), 0);
+    EXPECT_GT(uStrNumCmp("0.10.10", "0.10.9"), 0);
+    EXPECT_LT(uStrNumCmp("0.10.9", "0.10.10"), 0);
+    EXPECT_GT(uStrNumCmp("1.0.0", "0.24.5"), 0);
+    EXPECT_EQ(uStrNumCmp("0.23.7", "0.23.7"), 0);
+}
+
+TEST(UStlTest, UStrNumCmpTokens)
+{
+    EXPECT_EQ(uStrNumCmp("", ""), 0);
+    EXPECT_EQ(uStrNumCmp("abc", "abc"), 0);
+
+    // Other characters are compared as strings
+    EXPECT_LT(uStrNumCmp("abc", "abd"), 0);
+    EXPECT_GT(uStrNumCmp("abd", "abc"), 0);
+    EXPECT_LT(uStrNumCmp("ab", "abc"), 0);
+    EXPECT_GT(uStrNumCmp("abc", "ab"), 0);
+    EXPECT_LT(uStrNumCmp("a1b", "a1c"), 0);
+    EXPECT_GT(uStrNumCmp("a1c", "a1b"), 0);
+
+    // A number is smaller than other characters
+    EXPECT_LT(uStrNumCmp("1", "a"), 0);
+    EXPECT_GT(uStrNumCmp("a", "1"), 0);
+    EXPECT_LT(uStrNumCmp("a1", "ab"), 0);
+    EXPECT_GT(uStrNumCmp("ab", "a1"), 0);
+
+    // Only the tokens that both strings have are compared
+    EXPECT_EQ(uStrNumCmp("0.23", "0.23.7"), 0);
+    EXPECT_EQ(uStrNumCmp("0.23.7", "0.23"), 0);
+    EXPECT_EQ(uStrNumCmp("", "0.23.7"), 0);
+    EXPECT_EQ(uStrNumCmp("Image", "Image10.jpg"), 0);
+}
+
+TEST(UStlTest, UStrNumCmpLeadingZeros)
+{
+    // A number starting with 0 is compared like a decimal with a shorter
+    // number, which is padded with zeros at the end
+    EXPECT_LT(uStrNumCmp("a05", "a5"), 0);
+    EXPECT_GT(uStrNumCmp("a5", "a05"), 0);
+    EXPECT_GT(uStrNumCmp("a05", "a0"), 0);
+    EXPECT_LT(uStrNumCmp("a0", "a05"), 0);
+    EXPECT_EQ(uStrNumCmp("a050", "a05"), 0);
+    EXPECT_EQ(uStrNumCmp("a05", "a050"), 0);
+    EXPECT_GT(uStrNumCmp("a051", "a05"), 0);
+    EXPECT_LT(uStrNumCmp("a05", "a051"), 0);
+
+    // ...but by value with a longer number or one of the same size
+    EXPECT_LT(uStrNumCmp("a05", "a123"), 0);
+    EXPECT_GT(uStrNumCmp("a123", "a05"), 0);
+    EXPECT_LT(uStrNumCmp("a05", "a12"), 0);
+    EXPECT_GT(uStrNumCmp("a12", "a05"), 0);
+    EXPECT_EQ(uStrNumCmp("a05", "a05"), 0);
+}
+
 TEST(UStlTest, UStrContains)
 {
     EXPECT_TRUE(uStrContains("Hello World", "World"));
