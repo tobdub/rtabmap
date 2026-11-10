@@ -238,6 +238,42 @@ TEST(UStlTest, UMultimapToMapUnique)
     EXPECT_EQ(m[2], "c");
 }
 
+TEST(UStlTest, UMultimapToMapUniqueDuplicatesAnywhere)
+{
+    EXPECT_TRUE(uMultimapToMapUnique(std::multimap<int, int>()).empty());
+
+    // Duplicated keys at the beginning, in the middle and at the end
+    std::multimap<int, int> mm;
+    mm.insert({1, 10});
+    mm.insert({1, 11});
+    mm.insert({2, 20});
+    mm.insert({3, 30});
+    mm.insert({3, 31});
+    mm.insert({3, 32});
+    mm.insert({4, 40});
+    mm.insert({5, 50});
+    mm.insert({5, 51});
+
+    std::map<int, int> m = uMultimapToMapUnique(mm);
+    ASSERT_EQ(m.size(), 2u);
+    EXPECT_EQ(m.at(2), 20);
+    EXPECT_EQ(m.at(4), 40);
+
+    // Only duplicated keys
+    mm.erase(2);
+    mm.erase(4);
+    EXPECT_TRUE(uMultimapToMapUnique(mm).empty());
+
+    // Only unique keys
+    std::multimap<int, int> unique;
+    unique.insert({7, 70});
+    unique.insert({8, 80});
+    m = uMultimapToMapUnique(unique);
+    ASSERT_EQ(m.size(), 2u);
+    EXPECT_EQ(m.at(7), 70);
+    EXPECT_EQ(m.at(8), 80);
+}
+
 TEST(UStlTest, UAppend)
 {
     std::list<int> list1 = {1, 2, 3};

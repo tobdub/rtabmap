@@ -26,6 +26,7 @@
 #include <vector>
 #include <string>
 #include <algorithm>
+#include <iterator>
 #include <stdlib.h>
 
 /**
@@ -503,14 +504,16 @@ template<class K, class V>
 inline std::map<K, V> uMultimapToMapUnique(const std::multimap<K, V> & m)
 {
 	std::map<K, V> mapOut;
-	std::list<K> uniqueKeys = uUniqueKeys(m);
-	for(typename std::list<K>::const_iterator iter = uniqueKeys.begin(); iter!=uniqueKeys.end(); ++iter)
+	typename std::multimap<K, V>::const_iterator iter = m.begin();
+	while(iter != m.end())
 	{
-		if(m.count(*iter) == 1)
+		// Entries with the same key are consecutive
+		typename std::multimap<K, V>::const_iterator next = m.upper_bound(iter->first);
+		if(std::distance(iter, next) == 1)
 		{
-			typename std::multimap<K, V>::const_iterator jter=m.find(*iter);
-			mapOut.insert(mapOut.end(), std::pair<K,V>(jter->first, jter->second));
+			mapOut.insert(mapOut.end(), *iter);
 		}
+		iter = next;
 	}
 	return mapOut;
 }
