@@ -636,9 +636,12 @@ void SensorData::setOccupancyGrid(
 		UFATAL("Unsupported local occupancy grid format for empty cells: OpenCV type=%d size=%dx%d", empty.type(), empty.cols, empty.rows);
 	}
 
-	CompressionThread ctGround(ground);
-	CompressionThread ctObstacles(obstacles);
-	CompressionThread ctEmpty(empty);
+	// Fastest zlib level: on occupancy grids, it gives about the same size as
+	// the default level in a fraction of the time.
+	const int zlibLevel = 1;
+	CompressionThread ctGround(ground, "", zlibLevel);
+	CompressionThread ctObstacles(obstacles, "", zlibLevel);
+	CompressionThread ctEmpty(empty, "", zlibLevel);
 
 	if(!ground.empty())
 	{

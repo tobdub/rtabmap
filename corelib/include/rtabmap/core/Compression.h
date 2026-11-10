@@ -72,8 +72,9 @@ public:
 	 * @brief Constructs a thread in compress mode.
 	 * @param mat Source image or data matrix to compress.
 	 * @param format Image format: @c ".png", @c ".jpg", @c ".rvl" (see @ref compressImage()), or empty for zlib (@ref compressData2).
+	 * @param zlibLevel zlib compression level used when @p format is empty (see @ref compressData2).
 	 */
-	CompressionThread(const cv::Mat & mat, const std::string & format = "");
+	CompressionThread(const cv::Mat & mat, const std::string & format = "", int zlibLevel = -1);
 	/**
 	 * @brief Constructs a thread in uncompress mode.
 	 * @param bytes Compressed bytes (@c CV_8UC1).
@@ -90,6 +91,7 @@ private:
 	cv::Mat compressedData_;
 	cv::Mat uncompressedData_;
 	std::string format_;
+	int zlibLevel_;
 	bool image_;
 	bool compressMode_;
 };
@@ -164,8 +166,11 @@ cv::Mat RTABMAP_CORE_EXPORT uncompressImage(const unsigned char * bytes, size_t 
 
 /** @brief Compresses a matrix with zlib; appends rows, cols and type at the end. */
 std::vector<unsigned char> RTABMAP_CORE_EXPORT compressData(const cv::Mat & data);
-/** @brief Same as @ref compressData() but returns a @c CV_8UC1 row matrix. */
-cv::Mat RTABMAP_CORE_EXPORT compressData2(const cv::Mat & data);
+/**
+ * @brief Same as @ref compressData() but returns a @c CV_8UC1 row matrix.
+ * @param level zlib compression level, from 1 (fastest) to 9 (smallest), or -1 for zlib's default (6).
+ */
+cv::Mat RTABMAP_CORE_EXPORT compressData2(const cv::Mat & data, int level = -1);
 
 /** @brief Restores a matrix compressed with @ref compressData() or @ref compressData2(). */
 cv::Mat RTABMAP_CORE_EXPORT uncompressData(const cv::Mat & bytes);

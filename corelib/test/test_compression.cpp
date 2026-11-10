@@ -169,6 +169,34 @@ TEST(CompressionTest, CompressionThreadUncompressImage)
 	expectMatEqual(uncompressThread.getUncompressedData(), image);
 }
 
+TEST(CompressionTest, CompressData2LevelRoundTrip)
+{
+	// Compressible data, so that the level makes a difference
+	cv::Mat data(64, 64, CV_32FC3);
+	for(int i=0; i<data.rows; ++i)
+	{
+		for(int j=0; j<data.cols; ++j)
+		{
+			data.at<cv::Vec3f>(i, j) = cv::Vec3f(float(j)*0.1f, float(i)*0.1f, 0.0f);
+		}
+	}
+	const cv::Mat fastest = compressData2(data, 1);
+	const cv::Mat smallest = compressData2(data, 9);
+	ASSERT_FALSE(fastest.empty());
+	ASSERT_FALSE(smallest.empty());
+	EXPECT_LE(smallest.cols, fastest.cols);
+	EXPECT_LT(fastest.cols, int(data.total()*data.elemSize()));
+
+	expectMatEqual(uncompressData(fastest), data);
+	expectMatEqual(uncompressData(smallest), data);
+
+	CompressionThread compressThread(data, "", 1);
+	compressThread.start();
+	compressThread.join();
+	expectMatEqual(uncompressData(compressThread.getCompressedData()), data);
+	EXPECT_EQ(compressThread.getCompressedData().cols, fastest.cols);
+}
+
 TEST(CompressionTest, CompressionThreadDataRoundTrip)
 {
 	const cv::Mat data = cv::Mat_<int>({2, 3}, {1, 2, 3, 4, 5, 6});

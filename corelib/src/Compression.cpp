@@ -170,9 +170,10 @@ bool parseImageCompressionFormat(const std::string & format, std::string & codec
 }
 
 // format : ".jpg" ".png" ".rvl" "" (empty is general), see parseImageCompressionFormat()
-CompressionThread::CompressionThread(const cv::Mat & mat, const std::string & format) :
+CompressionThread::CompressionThread(const cv::Mat & mat, const std::string & format, int zlibLevel) :
 	uncompressedData_(mat),
 	format_(format),
+	zlibLevel_(zlibLevel),
 	image_(!format.empty()),
 	compressMode_(true)
 {
@@ -185,6 +186,7 @@ CompressionThread::CompressionThread(const cv::Mat & mat, const std::string & fo
 // assume image
 CompressionThread::CompressionThread(const cv::Mat & bytes, bool isImage) :
 	compressedData_(bytes),
+	zlibLevel_(-1),
 	image_(isImage),
 	compressMode_(false)
 {}
@@ -202,7 +204,7 @@ void CompressionThread::mainLoop()
 				}
 				else
 				{
-					compressedData_ = compressData2(uncompressedData_);
+					compressedData_ = compressData2(uncompressedData_, zlibLevel_);
 				}
 			}
 		}
@@ -407,7 +409,7 @@ std::vector<unsigned char> compressData(const cv::Mat & data)
 	return bytes;
 }
 
-cv::Mat compressData2(const cv::Mat & data)
+cv::Mat compressData2(const cv::Mat & data, int level)
 {
 	cv::Mat bytes;
 	if(!data.empty())
@@ -415,11 +417,12 @@ cv::Mat compressData2(const cv::Mat & data)
 		uLong sourceLen = uLong(data.total())*uLong(data.elemSize());
 		uLong destLen = compressBound(sourceLen);
 		bytes = cv::Mat(1, destLen+3*sizeof(int), CV_8UC1);
-		int errCode = compress(
+		int errCode = compress2(
 						(Bytef *)bytes.data,
 						&destLen,
 						(const Bytef *)data.data,
-						sourceLen);
+						sourceLen,
+						level);
 		bytes = cv::Mat(bytes, cv::Rect(0,0, destLen+3*sizeof(int), 1));
 		*((int*)&bytes.data[destLen]) = data.rows;
 		*((int*)&bytes.data[destLen+sizeof(int)]) = data.cols;
@@ -428,6 +431,10 @@ cv::Mat compressData2(const cv::Mat & data)
 		if(errCode == Z_MEM_ERROR)
 		{
 			UERROR("Z_MEM_ERROR : Insufficient memory.");
+		}
+		else if(errCode == Z_STREAM_ERROR)
+		{
+			UERROR("Z_STREAM_ERROR : Invalid compression level (%d).", level);
 		}
 		else if(errCode == Z_BUF_ERROR)
 		{
