@@ -1023,12 +1023,19 @@ std::list<int> VWDictionary::addNewWords(
 
 	// now compare with the actual index
 	cv::Mat descriptors;
+	// Norm comparing new words on the input descriptors, same distances as the index
+	int newWordsNormType = useDistanceL1_?cv::NORM_L1:cv::NORM_L2SQR;
 	if(descriptorsIn.type() == CV_8U)
 	{
 		useDistanceL1_ = true;
+		newWordsNormType = cv::NORM_HAMMING; // same as L1 on one float per bit, a lot faster
 		if(isKdTreeStrategy(_strategy))
 		{
 			descriptors = convertBinTo32F(descriptorsIn, _byteToFloat);
+			if(_byteToFloat)
+			{
+				newWordsNormType = cv::NORM_L1; // one float per byte
+			}
 		}
 		else
 		{
@@ -1200,9 +1207,9 @@ std::list<int> VWDictionary::addNewWords(
 		if(_newWordsComparedTogether && newWords.rows)
 		{
 			std::vector<std::vector<cv::DMatch> > matchesNewWords;
-			cv::BFMatcher matcher(descriptors.type()==CV_8U?cv::NORM_HAMMING:useDistanceL1_?cv::NORM_L1:cv::NORM_L2SQR);
-			UASSERT(descriptors.cols == newWords.cols && descriptors.type() == newWords.type());
-			matcher.knnMatch(descriptors.row(i), newWords, matchesNewWords, newWords.rows>1?2:1);
+			cv::BFMatcher matcher(newWordsNormType);
+			UASSERT(descriptorsIn.cols == newWords.cols && descriptorsIn.type() == newWords.type());
+			matcher.knnMatch(descriptorsIn.row(i), newWords, matchesNewWords, newWords.rows>1?2:1);
 			UASSERT(matchesNewWords.size() == 1);
 			for(unsigned int j=0; j<matchesNewWords.at(0).size(); ++j)
 			{
@@ -1248,7 +1255,7 @@ std::list<int> VWDictionary::addNewWords(
 				VisualWord * vw = new VisualWord(getNextId(), descriptorsIn.row(i), signatureId);
 				_visualWords.insert(_visualWords.end(), std::pair<int, VisualWord *>(vw->id(), vw));
 				_notIndexedWords.insert(_notIndexedWords.end(), vw->id());
-				newWords.push_back(descriptors.row(i));
+				newWords.push_back(descriptorsIn.row(i));
 				newWordsId.push_back(vw->id());
 				wordIds.push_back(vw->id());
 				UASSERT(vw->id()>0);
