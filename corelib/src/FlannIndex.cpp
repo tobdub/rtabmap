@@ -39,6 +39,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "nanoflann/NanoFlannIndex.h"
 #endif
 #include <boost/crc.hpp>
+#include <opencv2/core/hal/hal.hpp>
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -64,6 +65,22 @@ int resolveCores(int cores)
 	return 1;
 #endif
 }
+
+// rtflann::L1<float> using OpenCV's vectorized L1 norm.
+struct L1Float : public rtflann::L1<float>
+{
+	// No early exit on worst_dist: the kd-tree search doesn't use it.
+	ResultType operator()(const float * a, const float * b, size_t size, ResultType /*worst_dist*/ = -1) const
+	{
+		return cv::hal::normL1_(a, b, (int)size);
+	}
+
+	// The k-means index compares the points with its centers, kept as doubles.
+	ResultType operator()(const float * a, const double * b, size_t size, ResultType worst_dist = -1) const
+	{
+		return rtflann::L1<float>::operator()(a, b, size, worst_dist);
+	}
+};
 }
 
 void FlannIndex::setDeterministicSeed(bool enable)
@@ -108,7 +125,7 @@ void FlannIndex::release()
 		{
 			if(useDistanceL1_)
 			{
-				delete (rtflann::Index<rtflann::L1<float> >*)index_;
+				delete (rtflann::Index<L1Float>*)index_;
 			}
 			else if(featuresDim_ <= 3)
 			{
@@ -256,7 +273,7 @@ std::vector<unsigned char> FlannIndex::serializeIndex(bool computeChecksum) cons
 			{
 				if(useDistanceL1_)
 				{
-					((rtflann::Index<rtflann::L1<float> >*)index_)->save(indexDataPtr);;
+					((rtflann::Index<L1Float>*)index_)->save(indexDataPtr);;
 				}
 				else if(featuresDim_ <= 3)
 				{
@@ -386,7 +403,7 @@ size_t FlannIndex::indexedFeatures() const
 	{
 		if(useDistanceL1_)
 		{
-			return ((const rtflann::Index<rtflann::L1<float> >*)index_)->size();
+			return ((const rtflann::Index<L1Float>*)index_)->size();
 		}
 		else if(featuresDim_ <= 3)
 		{
@@ -423,7 +440,7 @@ size_t FlannIndex::memoryUsed() const
 	{
 		if(useDistanceL1_)
 		{
-			memoryUsage += ((const rtflann::Index<rtflann::L1<float> >*)index_)->usedMemory();
+			memoryUsage += ((const rtflann::Index<L1Float>*)index_)->usedMemory();
 		}
 		else if(featuresDim_ <= 3)
 		{
@@ -513,8 +530,8 @@ void FlannIndex::buildIndex(
 		rtflann::Matrix<float> dataset((float*)features.data, features.rows, features.cols);
 		if(useDistanceL1_)
 		{
-			index_ = new rtflann::Index<rtflann::L1<float> >(dataset, params);
-			((rtflann::Index<rtflann::L1<float> >*)index_)->buildIndex();
+			index_ = new rtflann::Index<L1Float>(dataset, params);
+			((rtflann::Index<L1Float>*)index_)->buildIndex();
 		}
 		else if(featuresDim_ <=3)
 		{
@@ -772,8 +789,8 @@ bool FlannIndex::loadIndex(
 		rtflann::Matrix<float> dataset((float*)features.data, features.rows, features.cols);
 		if(useDistanceL1_)
 		{
-			index_ = new rtflann::Index<rtflann::L1<float> >(dataset, params);
-			((rtflann::Index<rtflann::L1<float> >*)index_)->load_saved_index(indexDataPtr);
+			index_ = new rtflann::Index<L1Float>(dataset, params);
+			((rtflann::Index<L1Float>*)index_)->load_saved_index(indexDataPtr);
 		}
 		else if(featuresDim_ <=3)
 		{
@@ -854,7 +871,7 @@ std::vector<unsigned int> FlannIndex::addPoints(const cv::Mat & features)
 		rtflann::Matrix<float> points((float*)features.data, features.rows, features.cols);
 		if(useDistanceL1_)
 		{
-			rtflann::Index<rtflann::L1<float> > * index = (rtflann::Index<rtflann::L1<float> >*)index_;
+			rtflann::Index<L1Float> * index = (rtflann::Index<L1Float>*)index_;
 			removedPts = index->removedCount();
 			index->addPoints(points, 0);
 			if(needsRebuild(index, removedRatio))
@@ -956,7 +973,7 @@ void FlannIndex::removePoint(unsigned int index)
 	}
 	else if(useDistanceL1_)
 	{
-		((rtflann::Index<rtflann::L1<float> >*)index_)->removePoint(index);
+		((rtflann::Index<L1Float>*)index_)->removePoint(index);
 	}
 	else if(featuresDim_ <= 3)
 	{
@@ -1014,7 +1031,7 @@ void FlannIndex::knnSearch(
 		rtflann::Matrix<float> queryF((float*)query.data, query.rows, query.cols);
 		if(useDistanceL1_)
 		{
-			((rtflann::Index<rtflann::L1<float> >*)index_)->knnSearch(queryF, indicesF, distsF, knn, params);
+			((rtflann::Index<L1Float>*)index_)->knnSearch(queryF, indicesF, distsF, knn, params);
 		}
 		else if(featuresDim_ <= 3)
 		{
@@ -1086,7 +1103,7 @@ void FlannIndex::radiusSearch(
 		rtflann::Matrix<float> queryF((float*)query.data, query.rows, query.cols);
 		if(useDistanceL1_)
 		{
-			((rtflann::Index<rtflann::L1<float> >*)index_)->radiusSearch(queryF, indices, dists, radius*radius, params);
+			((rtflann::Index<L1Float>*)index_)->radiusSearch(queryF, indices, dists, radius*radius, params);
 		}
 		else if(featuresDim_ <= 3)
 		{
