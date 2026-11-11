@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <functional>
+#include <map>
+#include <set>
 #include <string>
 #include <vector>
 #include <rtabmap/core/RegistrationVis.h>
@@ -11,6 +13,7 @@
 #include <rtabmap/core/StereoCameraModel.h>
 #include <rtabmap/core/stereo/StereoBM.h>
 #include <rtabmap/core/util2d.h>
+#include <rtabmap/core/util3d_transforms.h>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
@@ -512,6 +515,113 @@ TEST(RegistrationVisTest, StereoFeatureMatchingAndOpticalFlowSucceed3DTo3D)
 	ASSERT_FALSE(fm.isNull());
 	ASSERT_FALSE(of.isNull());
 	EXPECT_LT(fm.getDistance(of), kGoldenTransTolM);
+}
+
+// Guess based matching of float descriptors (squared L2), in both directions,
+// with the NNDR test and with cross-check (Vis/CorNNType=5).
+TEST(RegistrationVisTest, GuessMatchingFloatDescriptors)
+{
+	// A grid of features 30 pixels apart, so that neighbors are in the search
+	// radius (40) of each other. The first words of "from" are out of view of
+	// "to", so that projected index != descriptor row.
+	const int outOfView = 3;
+	const int cols = 8;
+	const int features = outOfView + cols*6;
+	const float fx = 500.0f;
+	const float cx = 320.0f;
+	const float cy = 240.0f;
+	const CameraModel model(fx, fx, cx, cy, CameraModel::opticalRotation(), 0.0, cv::Size(640, 480));
+	const Transform expected(0.05f, 0.02f, -0.01f, 0.0f, 0.0f, 0.02f); // pose of "to" in "from"
+	const Transform toCamera = (expected * model.localTransform()).inverse();
+	std::vector<cv::KeyPoint> kptsFrom;
+	std::vector<cv::KeyPoint> kptsTo;
+	std::vector<cv::Point3f> kptsFrom3D;
+	for(int i=0; i<features; ++i)
+	{
+		const int col = (i-outOfView) % cols;
+		const int row = (i-outOfView) / cols;
+		const float u = i<outOfView ? -200.0f - 30.0f*float(i) : 215.0f + 30.0f*float(col);
+		const float v = i<outOfView ? cy : 165.0f + 30.0f*float(row);
+		const float depth = i<outOfView ? 2.0f : 2.0f + 0.25f*float(row % 3);
+		kptsFrom.push_back(cv::KeyPoint(u, v, 1.0f));
+		kptsFrom3D.push_back(util3d::transformPoint(
+				cv::Point3f((u-cx)*depth/fx, (v-cy)*depth/fx, depth),
+				model.localTransform()));
+		if(i >= outOfView)
+		{
+			const cv::Point3f pt = util3d::transformPoint(kptsFrom3D.back(), toCamera);
+			kptsTo.push_back(cv::KeyPoint(fx*pt.x/pt.z + cx, fx*pt.y/pt.z + cy, 1.0f));
+		}
+	}
+
+	// Squared distance: 20000 between two features, 4 between a feature and
+	// itself in the other frame.
+	cv::Mat descriptorsFrom = cv::Mat::zeros(features, features+1, CV_32FC1);
+	for(int i=0; i<features; ++i)
+	{
+		descriptorsFrom.at<float>(i, i) = 100.0f;
+	}
+	cv::Mat descriptorsTo = descriptorsFrom.clone();
+	descriptorsTo.col(features).setTo(2.0f);
+	// Makes a and b look alike: each is at a squared distance of offset^2 from
+	// itself in the other frame, and of (10-offset)^2 from the other feature.
+	auto makeSimilar = [&](int a, int b, float offset)
+	{
+		descriptorsFrom.row(a).copyTo(descriptorsFrom.row(b));
+		descriptorsFrom.at<float>(b, b) = 10.0f;
+		descriptorsFrom.row(a).copyTo(descriptorsTo.row(a));
+		descriptorsTo.at<float>(a, b) = offset;
+		descriptorsFrom.row(a).copyTo(descriptorsTo.row(b));
+		descriptorsTo.at<float>(b, b) = 10.0f - offset;
+	};
+	// NNDR (0.8) is tested on squared distances: 4.6^2/5.4^2=0.73 passes
+	// (4.6/5.4=0.85 would not), 4.9^2/5.1^2=0.92 fails.
+	makeSimilar(outOfView+cols+1, outOfView+cols+2, 4.6f);
+	const int ambiguousA = outOfView+3*cols+4;
+	const int ambiguousB = ambiguousA+1;
+	makeSimilar(ambiguousA, ambiguousB, 4.9f);
+
+	SensorData fromData;
+	fromData.setCameraModel(model);
+	fromData.setFeatures(kptsFrom, kptsFrom3D, descriptorsFrom);
+	SensorData toData;
+	toData.setCameraModel(model);
+	toData.setFeatures(kptsTo, std::vector<cv::Point3f>(), descriptorsTo.rowRange(outOfView, features));
+	const Transform guess = expected * Transform(0.01f, -0.005f, 0.0f, 0.0f, 0.0f, 0.002f);
+
+	for(bool matchToProjection: {false, true})
+	{
+		for(bool crossCheck: {false, true})
+		{
+			ParametersMap params = registrationVisTestParams(1 /* PnP */);
+			params[Parameters::kVisCorGuessMatchToProjection()] = matchToProjection?"true":"false";
+			params[Parameters::kVisCorNNType()] = crossCheck?"5":"1";
+			const std::string label = std::string("matchToProjection=") + (matchToProjection?"1":"0") +
+					" crossCheck=" + (crossCheck?"1":"0");
+
+			// "Mod": the words are set in the given signatures, not in copies.
+			Signature from(fromData);
+			Signature to(toData);
+			RegistrationInfo info;
+			const Transform transform = RegistrationVis(params).computeTransformationMod(from, to, guess, &info);
+			expectTransformNearExpected(transform, expected, 0.01f, 0.01f, label);
+
+			// The id of a matched word of "to" is the index of its feature in
+			// "from", the others get ids after them.
+			std::set<int> matched;
+			for(std::multimap<int, int>::const_iterator iter=to.getWords().begin(); iter!=to.getWords().end(); ++iter)
+			{
+				if(iter->first < features)
+				{
+					ASSERT_GE(iter->first, outOfView) << label;
+					EXPECT_TRUE(to.getWordsKpts().at(iter->second).pt == kptsTo[iter->first-outOfView].pt) << label << " feature=" << iter->first;
+					matched.insert(iter->first);
+				}
+			}
+			EXPECT_EQ(matched.size(), kptsTo.size() - (crossCheck?0:2)) << label;
+			EXPECT_EQ(matched.count(ambiguousA) + matched.count(ambiguousB), crossCheck?2u:0u) << label;
+		}
+	}
 }
 
 #if defined(RTABMAP_G2O)
